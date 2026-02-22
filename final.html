@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>AutoDash Ultimate</title>
+    <meta charset="UTF-8">
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            font-family: Arial;
+            background: #f4f6f9;
+            text-align: center;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+        }
+
+        .cards {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            width: 220px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            margin: 0;
+            font-size: 22px;
+        }
+
+        .card p {
+            margin: 5px 0 0;
+            color: gray;
+        }
+
+        canvas {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            margin-top: 40px;
+        }
+
+        button {
+            margin: 10px;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #ff4d4d;
+            color: white;
+        }
+
+        input {
+            margin: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>📊 AutoDash Ultimate</h1>
+
+    <input type="file" id="fileInput" accept=".xlsx, .xls" />
+    <button onclick="clearData()">Clear Saved Data</button>
+
+    <div class="cards" id="dashboard"></div>
+
+    <h2>Units Sold (Bar)</h2>
+    <canvas id="barChart"></canvas>
+
+    <h2>Revenue Trend (Line)</h2>
+    <canvas id="lineChart"></canvas>
+
+    <h2>Profit Distribution (Pie)</h2>
+    <canvas id="pieChart"></canvas>
+
+    <h2>Marketing Distribution (Doughnut)</h2>
+    <canvas id="doughnutChart"></canvas>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+
+            const STORAGE_KEY = "autoDashData";
+
+            let barChart, lineChart, pieChart, doughnutChart;
+
+            const fileInput = document.getElementById('fileInput');
+            fileInput.addEventListener('change', handleFile);
+
+            function handleFile(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+
+                reader.onload = function (event) {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(jsonData));
+                    generateDashboard(jsonData);
+                };
+
+                reader.readAsArrayBuffer(file);
+            }
+
+            function generateDashboard(data) {
+                if (!data || data.length === 0) return;
+
+                const headers = Object.keys(data[0]);
+
+                // Detect numeric columns
+                const numericColumns = headers.filter(header =>
+                    data.some(row => !isNaN(parseFloat(row[header])))
+                );
+
+                // Detect first non-numeric column (for labels)
+                const labelColumn = headers.find(header =>
+                    isNaN(parseFloat(data[0][header]))
+                );
+
+                const labels = data.map(row => row[labelColumn]);
+
+                const dashboard = document.getElementById("dashboard");
+                dashboard.innerHTML = "";
+
+                // Generate KPI Cards for ALL numeric columns
+                numericColumns.forEach(col => {
+                    const values = data.map(row => Number(row[col]) || 0);
+                    const total = values.reduce((a, b) => a + b, 0);
+                    const avg = total / values.length;
+
+                    dashboard.innerHTML += `
+            <div class="card">
+                <h2>${total.toFixed(2)}</h2>
+                <p>${col} Total</p>
+            </div>
+            <div class="card">
+                <h2>${avg.toFixed(2)}</h2>
+                <p>${col} Avg</p>
+            </div>
+        `;
+                });
+
+                destroyCharts();
+
+                // Chart 1 - Bar (First numeric column)
+                if (numericColumns[0]) {
+                    const values = data.map(row => Number(row[numericColumns[0]]) || 0);
+                    barChart = new Chart(document.getElementById('barChart'), {
+                        type: 'bar',
+                        data: { labels: labels, datasets: [{ label: numericColumns[0], data: values }] }
+                    });
+                }
+
+                // Chart 2 - Line (Second numeric column)
+                if (numericColumns[1]) {
+                    const values = data.map(row => Number(row[numericColumns[1]]) || 0);
+                    lineChart = new Chart(document.getElementById('lineChart'), {
+                        type: 'line',
+                        data: { labels: labels, datasets: [{ label: numericColumns[1], data: values, tension: 0.3 }] }
+                    });
+                }
+
+                // Chart 3 - Pie (Third numeric column)
+                if (numericColumns[2]) {
+                    const values = data.map(row => Number(row[numericColumns[2]]) || 0);
+                    pieChart = new Chart(document.getElementById('pieChart'), {
+                        type: 'pie',
+                        data: { labels: labels, datasets: [{ label: numericColumns[2], data: values }] }
+                    });
+                }
+
+                // Chart 4 - Doughnut (Fourth numeric column)
+                if (numericColumns[3]) {
+                    const values = data.map(row => Number(row[numericColumns[3]]) || 0);
+                    doughnutChart = new Chart(document.getElementById('doughnutChart'), {
+                        type: 'doughnut',
+                        data: { labels: labels, datasets: [{ label: numericColumns[3], data: values }] }
+                    });
+                }
+            }
+
+            function destroyCharts() {
+                if (barChart) barChart.destroy();
+                if (lineChart) lineChart.destroy();
+                if (pieChart) pieChart.destroy();
+                if (doughnutChart) doughnutChart.destroy();
+            }
+
+            window.clearData = function () {
+                localStorage.removeItem(STORAGE_KEY);
+                location.reload();
+            };
+
+            const savedData = localStorage.getItem(STORAGE_KEY);
+            if (savedData) {
+                generateDashboard(JSON.parse(savedData));
+            }
+
+        });
+    </script>
+
+</body>
+
+</html>
